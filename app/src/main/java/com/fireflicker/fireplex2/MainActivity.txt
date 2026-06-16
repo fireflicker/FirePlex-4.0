@@ -1,0 +1,52 @@
+Replace the existing loadArtwork() function in:
+app/src/main/java/com/fireflicker/fireplex2/MainActivity.kt
+
+Find:
+
+suspend fun loadArtwork(items: List<PlexMediaItem>): Pair<Map<String, String>, Map<String, String>> {
+    val thumbs = mutableMapOf<String, String>()
+    val backs = mutableMapOf<String, String>()
+
+    items.take(100).forEach { item ->
+        if (item.thumb.isNotBlank()) {
+            thumbs[item.ratingKey] = repo.imageUrl(item.thumb)
+        }
+
+        if (item.art.isNotBlank()) {
+            backs[item.ratingKey] = repo.imageUrl(item.art)
+        }
+    }
+
+    return thumbs to backs
+}
+
+Replace it with this:
+
+suspend fun loadArtwork(items: List<PlexMediaItem>): Pair<Map<String, String>, Map<String, String>> {
+    val thumbs = mutableMapOf<String, String>()
+    val backs = mutableMapOf<String, String>()
+
+    items.asSequence()
+        .filter { it.ratingKey.isNotBlank() }
+        .distinctBy { it.ratingKey }
+        .take(40)
+        .forEach { item ->
+            if (item.thumb.isNotBlank()) {
+                thumbs[item.ratingKey] = repo.imageUrl(
+                    path = item.thumb,
+                    width = 300,
+                    height = 450
+                )
+            }
+
+            if (item.art.isNotBlank()) {
+                backs[item.ratingKey] = repo.imageUrl(
+                    path = item.art,
+                    width = 1280,
+                    height = 720
+                )
+            }
+        }
+
+    return thumbs to backs
+}
