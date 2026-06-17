@@ -16,7 +16,8 @@ data class VlcPlayerSettings(
     val zoomMode: String = "fill",
     val subtitlesEnabled: Boolean = true,
     val volumePercent: Int = 100,
-    val hardwareDecoder: Boolean = true
+    val hardwareDecoder: Boolean = true,
+    val h264Level: String = "auto"
 )
 
 
@@ -26,5 +27,6 @@ data class MpvPlayerSettings(
     val zoomMode: String = "fill",
     val subtitlesEnabled: Boolean = true,
     val volumePercent: Int = 100,
-    val hardwareDecoder: Boolean = true
+    val hardwareDecoder: Boolean = true,
+    val h264Level: String = "auto"
 )
