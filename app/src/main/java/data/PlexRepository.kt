@@ -39,6 +39,7 @@ class PlexRepository(private val context: Context) {
     private val friendlyDeviceNameKey = stringPreferencesKey("friendly_device_name")
     private val appUsernameKey = stringPreferencesKey("app_username")
     private val preferredPlayerKey = stringPreferencesKey("preferred_player")
+    private val streamModeKey = stringPreferencesKey("stream_mode")
     private val exoPlayerSettingsKey = stringPreferencesKey("exo_player_settings")
     private val vlcPlayerSettingsKey = stringPreferencesKey("vlc_player_settings")
     private val mpvPlayerSettingsKey = stringPreferencesKey("mpv_player_settings")
@@ -172,6 +173,19 @@ class PlexRepository(private val context: Context) {
         val clean = player.lowercase().takeIf { it == "vlc" || it == "exo" || it == "mpv" } ?: "vlc"
         context.dataStore.edit {
             it[preferredPlayerKey] = clean
+        }
+    }
+
+    suspend fun streamMode(): String {
+        return context.dataStore.data.first()[streamModeKey]
+            ?.takeIf { it == "direct_play" || it == "direct_stream" || it == "transcode" }
+            ?: "direct_play"
+    }
+
+    suspend fun saveStreamMode(mode: String) {
+        val clean = mode.lowercase().takeIf { it == "direct_play" || it == "direct_stream" || it == "transcode" } ?: "direct_play"
+        context.dataStore.edit { prefs ->
+            prefs[streamModeKey] = clean
         }
     }
 
@@ -543,7 +557,7 @@ class PlexRepository(private val context: Context) {
         return sortedWith(compareByDescending<PlexMediaItem> { it.addedAt }.thenBy { it.title.lowercase() })
     }
 
-    suspend fun streamUrl(item: PlexMediaItem): String = withContext(Dispatchers.IO) {
+    suspend fun streamUrl(item: PlexMediaItem, mode: String = "direct_play"): String = withContext(Dispatchers.IO) {
         val base = serverBase()
         val token = savedToken() ?: error("Not linked")
 
@@ -551,7 +565,36 @@ class PlexRepository(private val context: Context) {
             error("This item has no direct playable video file.")
         }
 
-        "${base.trimEnd('/')}${item.partKey}?X-Plex-Token=$token"
+        when (mode) {
+            "transcode" -> plexTranscodeUrl(base, token, item, directStream = false)
+            "direct_stream" -> plexTranscodeUrl(base, token, item, directStream = true)
+            else -> "${base.trimEnd('/')}${item.partKey}?X-Plex-Token=${encode(token)}"
+        }
+    }
+
+    private fun plexTranscodeUrl(base: String, token: String, item: PlexMediaItem, directStream: Boolean): String {
+        val metadataPath = item.key.takeIf { it.isNotBlank() } ?: "/library/metadata/${item.ratingKey}"
+        val directPlay = if (directStream) "0" else "0"
+        val directStreamValue = if (directStream) "1" else "0"
+
+        return buildString {
+            append(base.trimEnd('/'))
+            append("/video/:/transcode/universal/start.m3u8")
+            append("?path=${encode(metadataPath)}")
+            append("&mediaIndex=0")
+            append("&partIndex=0")
+            append("&protocol=hls")
+            append("&fastSeek=1")
+            append("&directPlay=$directPlay")
+            append("&directStream=$directStreamValue")
+            append("&copyts=1")
+            append("&subtitleSize=100")
+            append("&audioBoost=100")
+            append("&videoQuality=100")
+            append("&maxVideoBitrate=20000")
+            append("&location=lan")
+            append("&X-Plex-Token=${encode(token)}")
+        }
     }
 
     suspend fun imageUrl(path: String, width: Int = 300, height: Int = 450): String = withContext(Dispatchers.IO) {
