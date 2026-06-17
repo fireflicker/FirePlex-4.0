@@ -40,6 +40,7 @@ class PlexRepository(private val context: Context) {
     private val appUsernameKey = stringPreferencesKey("app_username")
     private val preferredPlayerKey = stringPreferencesKey("preferred_player")
     private val streamModeKey = stringPreferencesKey("stream_mode")
+    private val appDisplayModeKey = stringPreferencesKey("app_display_mode")
     private val exoPlayerSettingsKey = stringPreferencesKey("exo_player_settings")
     private val vlcPlayerSettingsKey = stringPreferencesKey("vlc_player_settings")
     private val mpvPlayerSettingsKey = stringPreferencesKey("mpv_player_settings")
@@ -186,6 +187,19 @@ class PlexRepository(private val context: Context) {
         val clean = mode.lowercase().takeIf { it == "direct_play" || it == "direct_stream" || it == "transcode" } ?: "transcode"
         context.dataStore.edit { prefs ->
             prefs[streamModeKey] = clean
+        }
+    }
+
+    suspend fun appDisplayMode(): String? {
+        return context.dataStore.data.first()[appDisplayModeKey]
+            ?.lowercase()
+            ?.takeIf { it == "tv" || it == "mobile" }
+    }
+
+    suspend fun saveAppDisplayMode(mode: String) {
+        val clean = mode.lowercase().takeIf { it == "tv" || it == "mobile" } ?: "tv"
+        context.dataStore.edit { prefs ->
+            prefs[appDisplayModeKey] = clean
         }
     }
 
