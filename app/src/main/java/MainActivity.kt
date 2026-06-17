@@ -104,13 +104,11 @@ class MainActivity : ComponentActivity() {
             arrayOf(
                 Manifest.permission.READ_MEDIA_VIDEO,
                 Manifest.permission.READ_MEDIA_IMAGES,
-                Manifest.permission.READ_MEDIA_AUDIO,
-                Manifest.permission.RECORD_AUDIO
+                Manifest.permission.READ_MEDIA_AUDIO
             )
         } else {
             arrayOf(
-                Manifest.permission.READ_EXTERNAL_STORAGE,
-                Manifest.permission.RECORD_AUDIO
+                Manifest.permission.READ_EXTERNAL_STORAGE
             )
         }
 
@@ -141,6 +139,7 @@ fun FirePlexApp(repo: PlexRepository) {
     var loading by remember { mutableStateOf(false) }
     var showExitDialog by remember { mutableStateOf(false) }
     var appDisplayMode by remember { mutableStateOf<AppDisplayMode?>(null) }
+    var appDisplayModeLoaded by remember { mutableStateOf(false) }
 
     var serverName by remember { mutableStateOf<String?>(null) }
     var friendlyName by remember { mutableStateOf("FirePlex3.0") }
@@ -559,6 +558,15 @@ fun FirePlexApp(repo: PlexRepository) {
         }
     }
 
+    fun saveDisplayMode(mode: AppDisplayMode) {
+        scope.launch {
+            repo.saveAppDisplayMode(if (mode == AppDisplayMode.Mobile) "mobile" else "tv")
+            appDisplayMode = mode
+            appDisplayModeLoaded = true
+            status = if (mode == AppDisplayMode.Mobile) "Saved mobile layout." else "Saved TV layout."
+        }
+    }
+
 
 
 
@@ -671,6 +679,14 @@ fun FirePlexApp(repo: PlexRepository) {
     }
 
     LaunchedEffect(Unit) {
+        val savedMode = repo.appDisplayMode()
+        appDisplayMode = when (savedMode) {
+            "mobile" -> AppDisplayMode.Mobile
+            "tv" -> AppDisplayMode.Tv
+            else -> null
+        }
+        appDisplayModeLoaded = true
+
         val token = repo.savedToken()
         if (!token.isNullOrBlank()) {
             linked = true
@@ -1049,10 +1065,17 @@ fun FirePlexApp(repo: PlexRepository) {
     }
 
     MaterialTheme(colorScheme = darkColorScheme(primary = Color(0xFFE5A00D))) {
+        if (!appDisplayModeLoaded) {
+            Box(modifier = Modifier.fillMaxSize().background(Color.Black), contentAlignment = Alignment.Center) {
+                Text("Loading FirePlex layout...", color = Color.White, fontSize = 20.sp)
+            }
+            return@MaterialTheme
+        }
+
         if (appDisplayMode == null) {
             DisplayModeChooserScreen(
-                onTv = { appDisplayMode = AppDisplayMode.Tv },
-                onMobile = { appDisplayMode = AppDisplayMode.Mobile }
+                onTv = { saveDisplayMode(AppDisplayMode.Tv) },
+                onMobile = { saveDisplayMode(AppDisplayMode.Mobile) }
             )
             return@MaterialTheme
         }
@@ -1187,6 +1210,8 @@ fun FirePlexApp(repo: PlexRepository) {
                             speedResult = speedResult,
                             status = status,
                             cachedAt = cachedAt,
+                            appDisplayMode = appDisplayMode ?: AppDisplayMode.Tv,
+                            onSaveAppDisplayMode = { saveDisplayMode(it) },
                             onSaveFriendlyName = { saveFriendlyName(it) },
                             onSetLibraryEnabled = { library, enabled -> setLibraryEnabled(library, enabled) },
                             onSavePlayerChoice = { savePlayerChoice(it) },
@@ -1316,11 +1341,17 @@ fun FirePlexApp(repo: PlexRepository) {
                                 onOpenUpdate = { showUpdateScreen = true }
                             )
                         } else {
-                            LobbyScreen(
+                            TvHomeScreen(
                                 serverName = serverName ?: "Plex Media Server",
                                 friendlyName = friendlyName,
                                 libraries = enabledLibraries,
                                 allLibrariesHidden = libraries.isNotEmpty() && enabledLibraries.isEmpty(),
+                                recentlyMovies = recentlyMovies,
+                                recentlyShows = recentlyShows,
+                                continueWatching = continueWatching,
+                                favoriteItems = favoriteItems,
+                                favoriteKeys = favoriteKeys,
+                                artworkUrls = artworkUrls,
                                 status = status,
                                 loading = loading,
                                 cachedAt = cachedAt,
@@ -1328,7 +1359,9 @@ fun FirePlexApp(repo: PlexRepository) {
                                 onOpenSeries = { selectedMode = ContentMode.Series },
                                 onOpenFavorites = { openFavorites() },
                                 onOpenSettings = { showSettings = true },
-                                onOpenUpdate = { showUpdateScreen = true }
+                                onOpenUpdate = { showUpdateScreen = true },
+                                onSelectDetails = { openDetails(it) },
+                                onToggleFavorite = { toggleFavorite(it) }
                             )
                         }
                     }
@@ -1991,6 +2024,143 @@ fun LobbyScreen(
     }
 }
 
+
+@Composable
+fun TvHomeScreen(
+    serverName: String,
+    friendlyName: String,
+    libraries: List<PlexLibrary>,
+    allLibrariesHidden: Boolean,
+    recentlyMovies: List<PlexMediaItem>,
+    recentlyShows: List<PlexMediaItem>,
+    continueWatching: List<PlexMediaItem>,
+    favoriteItems: List<PlexMediaItem>,
+    favoriteKeys: Set<String>,
+    artworkUrls: Map<String, String>,
+    status: String,
+    loading: Boolean,
+    cachedAt: Long,
+    onOpenVod: () -> Unit,
+    onOpenSeries: () -> Unit,
+    onOpenFavorites: () -> Unit,
+    onOpenSettings: () -> Unit,
+    onOpenUpdate: () -> Unit,
+    onSelectDetails: (PlexMediaItem) -> Unit,
+    onToggleFavorite: (PlexMediaItem) -> Unit
+) {
+    val vodEnabled = !allLibrariesHidden && libraries.any { it.type.equals("movie", true) }
+    val seriesEnabled = !allLibrariesHidden && libraries.any { it.type.equals("show", true) || it.type.equals("tv", true) }
+
+    Column(modifier = Modifier.fillMaxSize().padding(10.dp)) {
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Image(
+                    painter = painterResource(id = R.drawable.app_logo),
+                    contentDescription = "FirePlex logo",
+                    modifier = Modifier.size(56.dp),
+                    contentScale = ContentScale.Fit
+                )
+                Spacer(Modifier.width(12.dp))
+                Column {
+                    Text("FirePlex", color = Color.White, fontSize = 30.sp, fontWeight = FontWeight.Bold)
+                    Text("$serverName  •  $friendlyName", color = Color(0xFFB7C7D8), fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(cacheLabel(cachedAt), color = Color(0xFFE5A00D), fontSize = 12.sp)
+                }
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                LobbySmallButton("UPDATE") { onOpenUpdate() }
+                LobbySmallButton("SETTINGS") { onOpenSettings() }
+            }
+        }
+
+        Spacer(Modifier.height(18.dp))
+
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+            TvQuickTile("VOD", "Movies", "▷", vodEnabled, Modifier.weight(1f)) { onOpenVod() }
+            TvQuickTile("SERIES", "TV Shows", "▤", seriesEnabled, Modifier.weight(1f)) { onOpenSeries() }
+            TvQuickTile("FAVOURITES", "Saved picks", "★", true, Modifier.weight(1f)) { onOpenFavorites() }
+            TvQuickTile("SEARCH", "Open VOD search", "⌕", vodEnabled, Modifier.weight(1f)) { onOpenVod() }
+        }
+
+        Spacer(Modifier.height(16.dp))
+        Text(if (loading) "Loading..." else status, color = Color(0xFFB7C7D8), fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Spacer(Modifier.height(14.dp))
+
+        LazyColumn(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(18.dp)) {
+            if (continueWatching.isNotEmpty()) {
+                item { TvPosterRow("CONTINUE WATCHING", continueWatching, artworkUrls, favoriteKeys, onSelectDetails, onToggleFavorite) }
+            }
+            if (recentlyMovies.isNotEmpty()) {
+                item { TvPosterRow("RECENTLY ADDED MOVIES", recentlyMovies.take(24), artworkUrls, favoriteKeys, onSelectDetails, onToggleFavorite) }
+            }
+            if (recentlyShows.isNotEmpty()) {
+                item { TvPosterRow("RECENTLY ADDED SERIES", recentlyShows.take(24), artworkUrls, favoriteKeys, onSelectDetails, onToggleFavorite) }
+            }
+            if (favoriteItems.isNotEmpty()) {
+                item { TvPosterRow("FAVOURITES", favoriteItems.take(24), artworkUrls, favoriteKeys, onSelectDetails, onToggleFavorite) }
+            }
+            item { Spacer(Modifier.height(18.dp)) }
+        }
+    }
+}
+
+@Composable
+fun TvQuickTile(
+    title: String,
+    subtitle: String,
+    icon: String,
+    enabled: Boolean,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
+    var focused by remember { mutableStateOf(false) }
+    Card(
+        modifier = modifier
+            .height(102.dp)
+            .onFocusChanged { focused = it.isFocused }
+            .focusable(enabled)
+            .clickable(enabled = enabled) { onClick() },
+        colors = CardDefaults.cardColors(containerColor = if (focused) Color(0xFF26384A) else Color(0xE9111820)),
+        border = BorderStroke(if (focused) 3.dp else 1.dp, if (focused) Color(0xFFE5A00D) else Color(0x33FFFFFF)),
+        shape = RoundedCornerShape(18.dp)
+    ) {
+        Row(modifier = Modifier.fillMaxSize().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(icon, color = if (enabled) Color(0xFFE5A00D) else Color(0xFF6D7785), fontSize = 30.sp, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.width(12.dp))
+            Column {
+                Text(title, color = if (enabled) Color.White else Color(0xFF6D7785), fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                Text(subtitle, color = Color(0xFFB7C7D8), fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+        }
+    }
+}
+
+@Composable
+fun TvPosterRow(
+    title: String,
+    items: List<PlexMediaItem>,
+    artworkUrls: Map<String, String>,
+    favoriteKeys: Set<String>,
+    onSelectDetails: (PlexMediaItem) -> Unit,
+    onToggleFavorite: (PlexMediaItem) -> Unit
+) {
+    Column {
+        Text(title, color = Color.White, fontSize = 19.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+        Spacer(Modifier.height(8.dp))
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            items(items, key = { mediaItemStableId(it) }) { item ->
+                MediaPosterCard(
+                    item = item,
+                    artworkUrl = artworkUrls[item.ratingKey].orEmpty(),
+                    isFavorite = favoriteKeys.contains(mediaItemStableId(item)),
+                    onClick = { onSelectDetails(item) },
+                    onLongClick = { onToggleFavorite(item) }
+                )
+            }
+        }
+    }
+}
+
 @Composable
 fun ContentBrowseScreen(
     mode: ContentMode,
@@ -2416,6 +2586,8 @@ fun SettingsScreen(
     speedResult: String,
     status: String,
     cachedAt: Long,
+    appDisplayMode: AppDisplayMode,
+    onSaveAppDisplayMode: (AppDisplayMode) -> Unit,
     onSaveFriendlyName: (String) -> Unit,
     onSetLibraryEnabled: (PlexLibrary, Boolean) -> Unit,
     onSavePlayerChoice: (PlayerChoice) -> Unit,
@@ -2493,6 +2665,17 @@ fun SettingsScreen(
             }
 
             SettingsPage.App -> {
+                item {
+                    SettingsCard(title = "Device Layout") {
+                        Text("Choose the layout for this device. TV mode is best for Google TV, Android TV boxes, and Fire Sticks.", color = Color(0xFFB7C7D8), fontSize = 13.sp)
+                        Spacer(Modifier.height(12.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+                            FocusActionButton("TV / REMOTE", Modifier.weight(1f), if (appDisplayMode == AppDisplayMode.Tv) Color(0xFFE5A00D) else Color(0xFF203040)) { onSaveAppDisplayMode(AppDisplayMode.Tv) }
+                            FocusActionButton("MOBILE / TOUCH", Modifier.weight(1f), if (appDisplayMode == AppDisplayMode.Mobile) Color(0xFFE5A00D) else Color(0xFF203040)) { onSaveAppDisplayMode(AppDisplayMode.Mobile) }
+                        }
+                    }
+                }
+
                 item {
                     SettingsCard(title = "Visible Categories") {
                         Text("Turn categories on or off. These apply to the VOD and Series pages.", color = Color(0xFFB7C7D8), fontSize = 13.sp)
