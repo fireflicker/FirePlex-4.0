@@ -20,6 +20,7 @@ class FirePlexMPVView @JvmOverloads constructor(
         cacheDir: String,
         preBufferMs: Int,
         hardwareDecoder: Boolean,
+        h264Level: String,
         zoom: String,
         volume: Int
     ) {
@@ -36,7 +37,10 @@ class FirePlexMPVView @JvmOverloads constructor(
         MPVLib.setOptionString("opengl-es", "yes")
         MPVLib.setOptionString("vo", "gpu")
         MPVLib.setOptionString("ao", "audiotrack,opensles")
-        MPVLib.setOptionString("hwdec", if (hardwareDecoder) "mediacodec-copy,mediacodec" else "no")
+        val compatibilityMode = h264Level != "auto"
+        MPVLib.setOptionString("hwdec", if (hardwareDecoder && !compatibilityMode) "mediacodec-copy,mediacodec" else "no")
+        MPVLib.setOptionString("vd-lavc-check-hw-profile", if (compatibilityMode) "no" else "yes")
+        MPVLib.setOptionString("vd-lavc-software-fallback", "yes")
         MPVLib.setOptionString("cache", "yes")
         MPVLib.setOptionString("demuxer-readahead-secs", (preBufferMs.coerceAtLeast(300) / 1000.0).toString())
         MPVLib.setOptionString("demuxer-max-bytes", "${96 * 1024 * 1024}")
