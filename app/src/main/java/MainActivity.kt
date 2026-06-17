@@ -3309,7 +3309,7 @@ fun ExoVideoPlayer(
                         subtitleTracks = subtitleTracks,
                         selectedSubtitle = if (externalSubtitleName != null) null else selectedSubtitle,
                         externalSubtitleName = externalSubtitleName,
-                        currentTitle = itemTitle,
+                        itemTitle = itemTitle,
                         onSubtitleSelected = {
                             onSubtitleSelected(it)
                             subtitlesOpen = false
