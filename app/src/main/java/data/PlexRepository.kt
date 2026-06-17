@@ -166,11 +166,11 @@ class PlexRepository(private val context: Context) {
     suspend fun preferredPlayer(): String {
         return context.dataStore.data.first()[preferredPlayerKey]
             ?.takeIf { it == "vlc" || it == "exo" || it == "mpv" }
-            ?: "vlc"
+            ?: "exo"
     }
 
     suspend fun savePreferredPlayer(player: String) {
-        val clean = player.lowercase().takeIf { it == "vlc" || it == "exo" || it == "mpv" } ?: "vlc"
+        val clean = player.lowercase().takeIf { it == "vlc" || it == "exo" || it == "mpv" } ?: "exo"
         context.dataStore.edit {
             it[preferredPlayerKey] = clean
         }
@@ -179,11 +179,11 @@ class PlexRepository(private val context: Context) {
     suspend fun streamMode(): String {
         return context.dataStore.data.first()[streamModeKey]
             ?.takeIf { it == "direct_play" || it == "direct_stream" || it == "transcode" }
-            ?: "direct_play"
+            ?: "transcode"
     }
 
     suspend fun saveStreamMode(mode: String) {
-        val clean = mode.lowercase().takeIf { it == "direct_play" || it == "direct_stream" || it == "transcode" } ?: "direct_play"
+        val clean = mode.lowercase().takeIf { it == "direct_play" || it == "direct_stream" || it == "transcode" } ?: "transcode"
         context.dataStore.edit { prefs ->
             prefs[streamModeKey] = clean
         }
